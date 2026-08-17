@@ -35,6 +35,19 @@ describe('User REST API', () => {
     expect(res.json()).toHaveLength(2);
   });
 
+  it('GET /users sets X-Total-Count to the full filtered count, not the page size', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?limit=2' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(2);
+    expect(res.headers['x-total-count']).toBe('3');
+  });
+
+  it('GET /users?name= reflects the filtered count in X-Total-Count', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?name=alan' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['x-total-count']).toBe('1');
+  });
+
   it('GET /users?offset=1 skips the first user', async () => {
     const res = await app.inject({ method: 'GET', url: '/users?offset=1&limit=10' });
     expect(res.statusCode).toBe(200);

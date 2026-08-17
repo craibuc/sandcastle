@@ -88,7 +88,16 @@ export const listUsersSchema = {
   summary: 'List users (paginated, filterable by name)',
   querystring: listUsersQuery,
   response: {
-    200: { type: 'array', items: userRef },
+    200: {
+      type: 'array',
+      items: userRef,
+      headers: {
+        'X-Total-Count': {
+          type: 'integer',
+          description: 'Total number of users matching the filter, ignoring pagination',
+        },
+      },
+    },
     400: errorRef,
   },
 } as const;

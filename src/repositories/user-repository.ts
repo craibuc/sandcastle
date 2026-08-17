@@ -32,6 +32,20 @@ export class UserRepository {
     return recordset.map(toUser);
   }
 
+  /**
+   * Counts users matching an optional name filter, ignoring any pagination
+   * options. Lets callers report the full result size (e.g. an
+   * `X-Total-Count` header) independently of the returned page.
+   */
+  async count(options: ListUsersOptions = {}): Promise<number> {
+    const name = options.name ? `%${options.name}%` : null;
+    const { recordset } = await this.db
+      .request()
+      .input('name', name)
+      .query<{ Total: number }>(SQL.countUsers);
+    return recordset[0].Total;
+  }
+
   async findById(id: number): Promise<User | null> {
     const { recordset } = await this.db
       .request()

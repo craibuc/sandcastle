@@ -32,6 +32,15 @@ describe('UserRepository', () => {
     expect(users[0].name).toBe('Alan Turing');
   });
 
+  it('count returns the total number of users, honouring the name filter', async () => {
+    expect(await repo.count()).toBe(3);
+    expect(await repo.count({ name: 'alan' })).toBe(1);
+  });
+
+  it('count ignores pagination options', async () => {
+    expect(await repo.count({ limit: 1, offset: 2 })).toBe(3);
+  });
+
   it('findById returns a single user', async () => {
     const user = await repo.findById(1);
     expect(user).toMatchObject({ id: 1 });

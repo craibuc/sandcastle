@@ -26,8 +26,10 @@ const notFound = (reply: FastifyReply, message: string): FastifyReply =>
 export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify, opts) => {
   const repo = new UserRepository(opts.database);
 
-  fastify.get<{ Querystring: ListUsersOptions }>('/users', { schema: listUsersSchema }, async (request) => {
-    return repo.findAll(request.query);
+  fastify.get<{ Querystring: ListUsersOptions }>('/users', { schema: listUsersSchema }, async (request, reply) => {
+    const [users, total] = await Promise.all([repo.findAll(request.query), repo.count(request.query)]);
+    reply.header('X-Total-Count', total);
+    return users;
   });
 
   fastify.get<{ Params: IdParams }>('/users/:id', { schema: getUserSchema }, async (request, reply) => {

@@ -45,6 +45,17 @@ describe('DummyMssqlDatabase', () => {
     expect(filtered.recordset[0].Name).toBe('Alan Turing');
   });
 
+  it('counts users honouring the name filter, ignoring pagination', async () => {
+    const all = await db.request().input('name', null).query<{ Total: number }>(SQL.countUsers);
+    expect(all.recordset[0].Total).toBe(3);
+
+    const filtered = await db.request().input('name', '%a%').query<{ Total: number }>(SQL.countUsers);
+    expect(filtered.recordset[0].Total).toBe(3);
+
+    const one = await db.request().input('name', '%alan%').query<{ Total: number }>(SQL.countUsers);
+    expect(one.recordset[0].Total).toBe(1);
+  });
+
   it('selects a single user by parameterised id', async () => {
     const { recordset } = await db
       .request()

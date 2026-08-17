@@ -50,8 +50,12 @@ documented in Swagger):
 | `offset` | integer | `0`     | rows to skip (for paging)                    |
 | `name`   | string  | —       | partial, case-insensitive name filter        |
 
+The response carries an **`X-Total-Count`** header with the total number of
+users matching the filter, independent of the pagination window — so clients
+can render "showing 1–20 of _N_" without an extra request.
+
 ```bash
-curl 'http://localhost:3000/users?limit=2&offset=1'
+curl -i 'http://localhost:3000/users?limit=2&offset=1'   # X-Total-Count: 3
 curl 'http://localhost:3000/users?name=alan'
 ```
 
