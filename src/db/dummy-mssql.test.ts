@@ -17,6 +17,34 @@ describe('DummyMssqlDatabase', () => {
     expect(result.recordset[0]).toHaveProperty('Email');
   });
 
+  it('lists users with pagination (offset/limit) and name filter', async () => {
+    const firstTwo = await db
+      .request()
+      .input('name', null)
+      .input('offset', 0)
+      .input('limit', 2)
+      .query(SQL.listUsers);
+    expect(firstTwo.recordset).toHaveLength(2);
+    expect(firstTwo.recordset[0].Id).toBe(1);
+
+    const skipFirst = await db
+      .request()
+      .input('name', null)
+      .input('offset', 1)
+      .input('limit', 10)
+      .query(SQL.listUsers);
+    expect(skipFirst.recordset[0].Id).toBe(2);
+
+    const filtered = await db
+      .request()
+      .input('name', '%alan%')
+      .input('offset', 0)
+      .input('limit', 10)
+      .query(SQL.listUsers);
+    expect(filtered.recordset).toHaveLength(1);
+    expect(filtered.recordset[0].Name).toBe('Alan Turing');
+  });
+
   it('selects a single user by parameterised id', async () => {
     const { recordset } = await db
       .request()

@@ -1,5 +1,5 @@
 import { DummyMssqlDatabase, SQL, type UserRow } from '../db/dummy-mssql.js';
-import type { User, UserInput, UserPatch } from '../types.js';
+import type { ListUsersOptions, User, UserInput, UserPatch } from '../types.js';
 
 const toUser = (row: UserRow): User => ({
   id: row.Id,
@@ -15,8 +15,20 @@ const toUser = (row: UserRow): User => ({
 export class UserRepository {
   constructor(private readonly db: DummyMssqlDatabase) {}
 
-  async findAll(): Promise<User[]> {
-    const { recordset } = await this.db.request().query<UserRow>(SQL.selectAllUsers);
+  /**
+   * Lists users, newest-id last, with an optional name filter and a
+   * pagination window. Defaults to the first 20 rows.
+   */
+  async findAll(options: ListUsersOptions = {}): Promise<User[]> {
+    const limit = options.limit ?? 20;
+    const offset = options.offset ?? 0;
+    const name = options.name ? `%${options.name}%` : null;
+    const { recordset } = await this.db
+      .request()
+      .input('name', name)
+      .input('offset', offset)
+      .input('limit', limit)
+      .query<UserRow>(SQL.listUsers);
     return recordset.map(toUser);
   }
 

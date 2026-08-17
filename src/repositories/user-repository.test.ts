@@ -17,6 +17,21 @@ describe('UserRepository', () => {
     expect(users[0]).toHaveProperty('email');
   });
 
+  it('findAll paginates with limit and offset', async () => {
+    const firstTwo = await repo.findAll({ limit: 2 });
+    expect(firstTwo).toHaveLength(2);
+    expect(firstTwo[0].id).toBe(1);
+
+    const skipFirst = await repo.findAll({ offset: 1, limit: 10 });
+    expect(skipFirst[0].id).toBe(2);
+  });
+
+  it('findAll filters by partial, case-insensitive name', async () => {
+    const users = await repo.findAll({ name: 'alan' });
+    expect(users).toHaveLength(1);
+    expect(users[0].name).toBe('Alan Turing');
+  });
+
   it('findById returns a single user', async () => {
     const user = await repo.findById(1);
     expect(user).toMatchObject({ id: 1 });

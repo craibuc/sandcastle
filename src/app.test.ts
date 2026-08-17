@@ -29,6 +29,31 @@ describe('User REST API', () => {
     expect(body.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('GET /users?limit=2 paginates the result', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?limit=2' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(2);
+  });
+
+  it('GET /users?offset=1 skips the first user', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?offset=1&limit=10' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()[0].id).toBe(2);
+  });
+
+  it('GET /users?name= filters by partial name', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?name=alan' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].name).toBe('Alan Turing');
+  });
+
+  it('GET /users rejects an out-of-range limit with 400', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?limit=0' });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('GET /users/:id returns a single user', async () => {
     const res = await app.inject({ method: 'GET', url: '/users/1' });
     expect(res.statusCode).toBe(200);
@@ -57,6 +82,24 @@ describe('User REST API', () => {
       method: 'POST',
       url: '/users',
       payload: { name: 'No Email' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('POST /users rejects a malformed email with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/users',
+      payload: { name: 'Bad Email', email: 'not-an-email' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('PATCH /users/:id rejects a malformed email with 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/users/1',
+      payload: { email: 'not-an-email' },
     });
     expect(res.statusCode).toBe(400);
   });

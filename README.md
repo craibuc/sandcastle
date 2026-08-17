@@ -32,12 +32,28 @@ The server listens on `http://localhost:3000` (override with `PORT` / `HOST`).
 | Method | Path          | Description        |
 | ------ | ------------- | ------------------ |
 | GET    | `/health`     | Health check       |
-| GET    | `/users`      | List all users     |
+| GET    | `/users`      | List users (paginated, filterable) |
 | GET    | `/users/:id`  | Get a user by id   |
 | POST   | `/users`      | Create a user      |
 | PUT    | `/users/:id`  | Replace a user     |
 | PATCH  | `/users/:id`  | Partially update a user |
 | DELETE | `/users/:id`  | Delete a user      |
+
+### Listing, pagination & filtering
+
+`GET /users` accepts optional query parameters (validated via JSON schema and
+documented in Swagger):
+
+| Param    | Type    | Default | Notes                                        |
+| -------- | ------- | ------- | -------------------------------------------- |
+| `limit`  | integer | `20`    | 1–100; maximum rows to return                |
+| `offset` | integer | `0`     | rows to skip (for paging)                    |
+| `name`   | string  | —       | partial, case-insensitive name filter        |
+
+```bash
+curl 'http://localhost:3000/users?limit=2&offset=1'
+curl 'http://localhost:3000/users?name=alan'
+```
 
 ## Scripts
 

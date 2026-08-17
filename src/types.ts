@@ -13,3 +13,10 @@ export interface UserInput {
 
 /** Payload accepted when partially updating a user; every field is optional. */
 export type UserPatch = Partial<UserInput>;
+
+/** Options for listing users: pagination window and optional name filter. */
+export interface ListUsersOptions {
+  limit?: number;
+  offset?: number;
+  name?: string;
+}
