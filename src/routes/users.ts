@@ -30,8 +30,9 @@ export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify,
   });
 
   fastify.get<{ Params: IdParams }>('/users/:id', { schema: getUserSchema }, async (request, reply) => {
-    const user = await repo.findById(request.params.id);
-    if (!user) return notFound(reply, `User ${request.params.id} not found`);
+    const { id } = request.params;
+    const user = await repo.findById(id);
+    if (!user) return notFound(reply, `User ${id} not found`);
     return user;
   });
 
@@ -44,15 +45,17 @@ export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify,
     '/users/:id',
     { schema: updateUserSchema },
     async (request, reply) => {
-      const user = await repo.update(request.params.id, request.body);
-      if (!user) return notFound(reply, `User ${request.params.id} not found`);
+      const { id } = request.params;
+      const user = await repo.update(id, request.body);
+      if (!user) return notFound(reply, `User ${id} not found`);
       return user;
     },
   );
 
   fastify.delete<{ Params: IdParams }>('/users/:id', { schema: deleteUserSchema }, async (request, reply) => {
-    const removed = await repo.remove(request.params.id);
-    if (!removed) return notFound(reply, `User ${request.params.id} not found`);
+    const { id } = request.params;
+    const removed = await repo.remove(id);
+    if (!removed) return notFound(reply, `User ${id} not found`);
     return reply.code(204).send();
   });
 };
