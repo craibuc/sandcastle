@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DummyMssqlDatabase } from '../db/dummy-mssql.js';
-import { UserRepository } from './user-repository.js';
+import { DuplicateEmailError, UserRepository } from './user-repository.js';
 
 describe('UserRepository', () => {
   let repo: UserRepository;
@@ -64,6 +64,29 @@ describe('UserRepository', () => {
 
   it('update returns null for an unknown user', async () => {
     expect(await repo.update(9999, { name: 'x', email: 'x@example.com' })).toBeNull();
+  });
+
+  it('create throws DuplicateEmailError when the email already exists', async () => {
+    await expect(
+      repo.create({ name: 'Grace Clone', email: 'grace@example.com' }),
+    ).rejects.toBeInstanceOf(DuplicateEmailError);
+  });
+
+  it('update throws DuplicateEmailError when the email belongs to another user', async () => {
+    await expect(
+      repo.update(2, { name: 'Alan Turing', email: 'grace@example.com' }),
+    ).rejects.toBeInstanceOf(DuplicateEmailError);
+  });
+
+  it('patch throws DuplicateEmailError when moving to another user\'s email', async () => {
+    await expect(repo.patch(2, { email: 'grace@example.com' })).rejects.toBeInstanceOf(
+      DuplicateEmailError,
+    );
+  });
+
+  it('update keeps succeeding when the email is unchanged for the same user', async () => {
+    const updated = await repo.update(1, { name: 'Grace Renamed', email: 'grace@example.com' });
+    expect(updated).toMatchObject({ id: 1, name: 'Grace Renamed', email: 'grace@example.com' });
   });
 
   it('patch updates only the provided fields', async () => {

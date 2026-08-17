@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { UserRepository } from '../repositories/user-repository.js';
+import { DuplicateEmailError, UserRepository } from '../repositories/user-repository.js';
 import type { DummyMssqlDatabase } from '../db/dummy-mssql.js';
 import type { ListUsersOptions, UserInput, UserPatch } from '../types.js';
 import {
@@ -22,6 +22,9 @@ interface IdParams {
 const notFound = (reply: FastifyReply, message: string): FastifyReply =>
   reply.code(404).send({ statusCode: 404, error: 'Not Found', message });
 
+const conflict = (reply: FastifyReply, message: string): FastifyReply =>
+  reply.code(409).send({ statusCode: 409, error: 'Conflict', message });
+
 /** Registers CRUD routes for the `users` resource. */
 export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify, opts) => {
   const repo = new UserRepository(opts.database);
@@ -40,8 +43,13 @@ export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify,
   });
 
   fastify.post<{ Body: UserInput }>('/users', { schema: createUserSchema }, async (request, reply) => {
-    const user = await repo.create(request.body);
-    return reply.code(201).header('Location', `/users/${user.id}`).send(user);
+    try {
+      const user = await repo.create(request.body);
+      return reply.code(201).header('Location', `/users/${user.id}`).send(user);
+    } catch (err) {
+      if (err instanceof DuplicateEmailError) return conflict(reply, err.message);
+      throw err;
+    }
   });
 
   fastify.put<{ Params: IdParams; Body: UserInput }>(
@@ -49,9 +57,14 @@ export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify,
     { schema: updateUserSchema },
     async (request, reply) => {
       const { id } = request.params;
-      const user = await repo.update(id, request.body);
-      if (!user) return notFound(reply, `User ${id} not found`);
-      return user;
+      try {
+        const user = await repo.update(id, request.body);
+        if (!user) return notFound(reply, `User ${id} not found`);
+        return user;
+      } catch (err) {
+        if (err instanceof DuplicateEmailError) return conflict(reply, err.message);
+        throw err;
+      }
     },
   );
 
@@ -60,9 +73,14 @@ export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify,
     { schema: patchUserSchema },
     async (request, reply) => {
       const { id } = request.params;
-      const user = await repo.patch(id, request.body);
-      if (!user) return notFound(reply, `User ${id} not found`);
-      return user;
+      try {
+        const user = await repo.patch(id, request.body);
+        if (!user) return notFound(reply, `User ${id} not found`);
+        return user;
+      } catch (err) {
+        if (err instanceof DuplicateEmailError) return conflict(reply, err.message);
+        throw err;
+      }
     },
   );
 

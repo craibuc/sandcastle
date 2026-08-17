@@ -1,4 +1,4 @@
-import { DummyMssqlDatabase, SQL, type UserRow } from '../db/dummy-mssql.js';
+import { DummyMssqlDatabase, MssqlRequestError, SQL, type UserRow } from '../db/dummy-mssql.js';
 import type { ListUsersOptions, User, UserInput, UserPatch } from '../types.js';
 
 const toUser = (row: UserRow): User => ({
@@ -6,6 +6,25 @@ const toUser = (row: UserRow): User => ({
   name: row.Name,
   email: row.Email,
 });
+
+/** SQL Server error number raised by a UNIQUE KEY constraint violation. */
+const UNIQUE_VIOLATION = 2627;
+
+/**
+ * Raised when a write would violate the unique-email constraint. Lets the
+ * route layer translate a persistence-level clash into a `409 Conflict`
+ * without leaking driver-specific error shapes.
+ */
+export class DuplicateEmailError extends Error {
+  constructor(readonly email: string) {
+    super(`A user with email "${email}" already exists`);
+    this.name = 'DuplicateEmailError';
+  }
+}
+
+/** Detects the driver's unique-constraint error so it can be re-thrown as a domain error. */
+const isUniqueViolation = (err: unknown): boolean =>
+  err instanceof MssqlRequestError && err.number === UNIQUE_VIOLATION;
 
 /**
  * Data access for users. Talks to a {@link DummyMssqlDatabase} using the same
@@ -55,22 +74,32 @@ export class UserRepository {
   }
 
   async create(input: UserInput): Promise<User> {
-    const { recordset } = await this.db
-      .request()
-      .input('name', input.name)
-      .input('email', input.email)
-      .query<UserRow>(SQL.insertUser);
-    return toUser(recordset[0]);
+    try {
+      const { recordset } = await this.db
+        .request()
+        .input('name', input.name)
+        .input('email', input.email)
+        .query<UserRow>(SQL.insertUser);
+      return toUser(recordset[0]);
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new DuplicateEmailError(input.email);
+      throw err;
+    }
   }
 
   async update(id: number, input: UserInput): Promise<User | null> {
-    const { recordset, rowsAffected } = await this.db
-      .request()
-      .input('id', id)
-      .input('name', input.name)
-      .input('email', input.email)
-      .query<UserRow>(SQL.updateUser);
-    return rowsAffected[0] > 0 ? toUser(recordset[0]) : null;
+    try {
+      const { recordset, rowsAffected } = await this.db
+        .request()
+        .input('id', id)
+        .input('name', input.name)
+        .input('email', input.email)
+        .query<UserRow>(SQL.updateUser);
+      return rowsAffected[0] > 0 ? toUser(recordset[0]) : null;
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new DuplicateEmailError(input.email);
+      throw err;
+    }
   }
 
   /**

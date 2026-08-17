@@ -119,6 +119,7 @@ export const createUserSchema = {
   response: {
     201: userRef,
     400: errorRef,
+    409: errorRef,
   },
 } as const;
 
@@ -131,6 +132,7 @@ export const updateUserSchema = {
     200: userRef,
     400: errorRef,
     404: errorRef,
+    409: errorRef,
   },
 } as const;
 
@@ -143,6 +145,7 @@ export const patchUserSchema = {
     200: userRef,
     400: errorRef,
     404: errorRef,
+    409: errorRef,
   },
 } as const;
 

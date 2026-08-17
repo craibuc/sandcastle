@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DummyMssqlDatabase, SQL } from './dummy-mssql.js';
+import { DummyMssqlDatabase, MssqlRequestError, SQL } from './dummy-mssql.js';
 
 describe('DummyMssqlDatabase', () => {
   let db: DummyMssqlDatabase;
@@ -104,5 +104,44 @@ describe('DummyMssqlDatabase', () => {
   it('reports zero rowsAffected when deleting an unknown id', async () => {
     const { rowsAffected } = await db.request().input('id', 9999).query(SQL.deleteUser);
     expect(rowsAffected[0]).toBe(0);
+  });
+
+  it('rejects inserting a duplicate email with a unique-constraint error (2627)', async () => {
+    const insert = db
+      .request()
+      .input('name', 'Grace Clone')
+      .input('email', 'grace@example.com') // already used by the seeded Grace Hopper
+      .query(SQL.insertUser);
+    await expect(insert).rejects.toBeInstanceOf(MssqlRequestError);
+    await expect(insert).rejects.toMatchObject({ number: 2627 });
+  });
+
+  it('treats email uniqueness as case-insensitive (SQL Server default collation)', async () => {
+    const insert = db
+      .request()
+      .input('name', 'Grace Clone')
+      .input('email', 'GRACE@EXAMPLE.COM')
+      .query(SQL.insertUser);
+    await expect(insert).rejects.toMatchObject({ number: 2627 });
+  });
+
+  it('rejects updating a user to an email used by another user', async () => {
+    const update = db
+      .request()
+      .input('id', 2) // Alan Turing
+      .input('name', 'Alan Turing')
+      .input('email', 'grace@example.com') // belongs to user 1
+      .query(SQL.updateUser);
+    await expect(update).rejects.toMatchObject({ number: 2627 });
+  });
+
+  it('allows updating a user while keeping its own email', async () => {
+    const { rowsAffected } = await db
+      .request()
+      .input('id', 1)
+      .input('name', 'Grace Renamed')
+      .input('email', 'grace@example.com') // its own email, unchanged
+      .query(SQL.updateUser);
+    expect(rowsAffected[0]).toBe(1);
   });
 });
