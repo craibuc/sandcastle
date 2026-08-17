@@ -15,10 +15,26 @@ describe('User REST API', () => {
     await app.close();
   });
 
-  it('GET /health returns ok', async () => {
+  it('GET /health reports ok and a reachable database', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: 'ok' });
+    expect(res.json()).toEqual({ status: 'ok', database: 'up' });
+  });
+
+  it('GET /health returns 503 when the database is unreachable', async () => {
+    const failing = new DummyMssqlDatabase();
+    failing.request = () => {
+      throw new Error('ECONNREFUSED');
+    };
+    const down = buildApp({ database: failing });
+    await down.ready();
+    try {
+      const res = await down.inject({ method: 'GET', url: '/health' });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toEqual({ status: 'error', database: 'down' });
+    } finally {
+      await down.close();
+    }
   });
 
   it('GET /users returns the list of users', async () => {
