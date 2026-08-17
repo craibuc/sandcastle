@@ -80,6 +80,34 @@ describe('User REST API', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('PATCH /users/:id partially updates an existing user', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/users/1',
+      payload: { name: 'Patched' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ id: 1, name: 'Patched', email: 'grace@example.com' });
+  });
+
+  it('PATCH /users/:id returns 404 for an unknown user', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/users/9999',
+      payload: { name: 'x' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('PATCH /users/:id rejects an invalid payload with 400', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/users/1',
+      payload: { name: '' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('DELETE /users/:id removes a user and returns 204', async () => {
     const res = await app.inject({ method: 'DELETE', url: '/users/2' });
     expect(res.statusCode).toBe(204);

@@ -42,6 +42,20 @@ describe('UserRepository', () => {
     expect(await repo.update(9999, { name: 'x', email: 'x@example.com' })).toBeNull();
   });
 
+  it('patch updates only the provided fields', async () => {
+    const patched = await repo.patch(1, { name: 'Only Name' });
+    expect(patched).toMatchObject({ id: 1, name: 'Only Name', email: 'grace@example.com' });
+  });
+
+  it('patch with an empty change set returns the user unchanged', async () => {
+    const before = await repo.findById(1);
+    expect(await repo.patch(1, {})).toEqual(before);
+  });
+
+  it('patch returns null for an unknown user', async () => {
+    expect(await repo.patch(9999, { name: 'x' })).toBeNull();
+  });
+
   it('remove deletes a user and returns true', async () => {
     expect(await repo.remove(1)).toBe(true);
     expect(await repo.findById(1)).toBeNull();

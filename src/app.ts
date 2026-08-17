@@ -3,7 +3,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { DummyMssqlDatabase } from './db/dummy-mssql.js';
 import { userRoutes } from './routes/users.js';
-import { userSchema, userInputSchema, errorSchema } from './routes/user-schemas.js';
+import { userSchema, userInputSchema, userPatchSchema, errorSchema } from './routes/user-schemas.js';
 
 export interface BuildAppOptions {
   /** Injectable data source. Defaults to a freshly seeded dummy mssql database. */
@@ -23,6 +23,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 
   app.addSchema(userSchema);
   app.addSchema(userInputSchema);
+  app.addSchema(userPatchSchema);
   app.addSchema(errorSchema);
 
   app.register(swagger, {

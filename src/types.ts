@@ -10,3 +10,6 @@ export interface UserInput {
   name: string;
   email: string;
 }
+
+/** Payload accepted when partially updating a user; every field is optional. */
+export type UserPatch = Partial<UserInput>;
