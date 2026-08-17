@@ -86,43 +86,42 @@ const sandbox = () =>
 //
 // These replace the Dockerfile. Vercel has no image build step — it boots a
 // stock `runtime` ("node24") — so everything .sandcastle/Dockerfile bakes in
-// (git, jq, gh, Claude Code CLI) must be installed per-sandbox here. Each
-// install is guarded with `command -v`, so it is nearly free when the base
-// runtime already provides the tool.
+// must be installed per-sandbox here.
+//
+// IMPORTANT: the node24 runtime is Amazon Linux 2023 (ID_LIKE="fedora"), NOT
+// the Debian base the Dockerfile uses. dnf/yum are present; apt-get is not.
+// Verified in a live sandbox:
+//   node v24.14.1, git 2.49.0, curl 8.17.0, sudo — all preinstalled
+//   jq                — absent; installs from the default dnf repos
+//   gh                — absent AND not in the default repos; needs the tarball
+//   claude            — installs to ~/.local/bin, which is already on PATH
+// Each step is guarded with `command -v`, so it is a no-op once satisfied.
 const hooks = {
   sandbox: {
     onSandboxReady: [
-      // git and jq. The node24 runtime is expected to ship git, but this is
-      // unverified — the guard makes it a no-op when present.
-      {
-        command:
-          "command -v git >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || " +
-          "(sudo apt-get update && sudo apt-get install -y git jq)",
-      },
+      // jq. git and curl already ship with the runtime.
+      { command: "command -v jq >/dev/null 2>&1 || sudo dnf install -y -q jq" },
       // GitHub CLI — the prompts use it to read and close issues.
-      // Drop this block if your agents never touch GitHub (~15s per sandbox).
+      // Not packaged for Amazon Linux, so pull the official release tarball.
+      // Drop this block entirely if your agents never touch GitHub.
       {
         command:
-          "command -v gh >/dev/null 2>&1 || " +
-          "(curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg " +
-          "| sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && " +
-          'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] ' +
-          'https://cli.github.com/packages stable main" ' +
-          "| sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && " +
-          "sudo apt-get update && sudo apt-get install -y gh)",
+          "command -v gh >/dev/null 2>&1 || (" +
+          "GH_VER=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest " +
+          "| grep -o '\"tag_name\": *\"v[^\"]*\"' | head -1 | sed 's/.*\"v//;s/\"//') && " +
+          'curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" ' +
+          "-o /tmp/gh.tgz && " +
+          "sudo tar -xzf /tmp/gh.tgz -C /usr/local --strip-components=1 && " +
+          "rm -f /tmp/gh.tgz)",
       },
-      // Claude Code CLI — the agent binary itself.
-      //
-      // install.sh drops the binary in ~/.local/bin. The Dockerfile handles
-      // that with `ENV PATH="/home/agent/.local/bin:$PATH"`, which has no
-      // equivalent here, so symlink into /usr/local/bin rather than trusting
-      // the runtime's default PATH. Sandbox cwd is /vercel/sandbox/workspace
-      // (VERCEL_REPO_PATH in src/sandboxes/vercel.ts), not /home/agent.
+      // Claude Code CLI — the agent binary itself. install.sh drops it in
+      // ~/.local/bin (/home/vercel-sandbox/.local/bin), already on PATH here,
+      // so no symlink is needed — unlike the Dockerfile, which has to set
+      // ENV PATH explicitly for its /home/agent user.
       {
         command:
           "command -v claude >/dev/null 2>&1 || " +
-          "(curl -fsSL https://claude.ai/install.sh | bash && " +
-          'sudo ln -sf "$HOME/.local/bin/claude" /usr/local/bin/claude)',
+          "curl -fsSL https://claude.ai/install.sh | bash",
       },
       // Project dependencies. Now the primary install path — see below.
       { command: "npm install" },
