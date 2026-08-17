@@ -14,9 +14,17 @@ export interface UserInput {
 /** Payload accepted when partially updating a user; every field is optional. */
 export type UserPatch = Partial<UserInput>;
 
-/** Options for listing users: pagination window and optional name filter. */
+/** Field a user list may be sorted by. */
+export type UserSortField = 'id' | 'name' | 'email';
+
+/** Sort direction for a user list. */
+export type SortOrder = 'asc' | 'desc';
+
+/** Options for listing users: pagination window, name filter and sort. */
 export interface ListUsersOptions {
   limit?: number;
   offset?: number;
   name?: string;
+  sort?: UserSortField;
+  order?: SortOrder;
 }

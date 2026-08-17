@@ -67,6 +67,21 @@ describe('User REST API', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('GET /users?sort=name&order=desc returns users sorted by name descending', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?sort=name&order=desc' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().map((u: { name: string }) => u.name)).toEqual([
+      'Katherine Johnson',
+      'Grace Hopper',
+      'Alan Turing',
+    ]);
+  });
+
+  it('GET /users rejects an unknown sort field with 400', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?sort=ssn' });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('GET /users/:id returns a single user', async () => {
     const res = await app.inject({ method: 'GET', url: '/users/1' });
     expect(res.statusCode).toBe(200);

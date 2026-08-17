@@ -80,6 +80,18 @@ const listUsersQuery = {
       minLength: 1,
       description: 'Filter by partial, case-insensitive name match',
     },
+    sort: {
+      type: 'string',
+      enum: ['id', 'name', 'email'],
+      default: 'id',
+      description: 'Field to sort by',
+    },
+    order: {
+      type: 'string',
+      enum: ['asc', 'desc'],
+      default: 'asc',
+      description: 'Sort direction',
+    },
   },
 } as const;
 

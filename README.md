@@ -49,6 +49,11 @@ documented in Swagger):
 | `limit`  | integer | `20`    | 1–100; maximum rows to return                |
 | `offset` | integer | `0`     | rows to skip (for paging)                    |
 | `name`   | string  | —       | partial, case-insensitive name filter        |
+| `sort`   | string  | `id`    | field to sort by: `id`, `name` or `email`    |
+| `order`  | string  | `asc`   | sort direction: `asc` or `desc`              |
+
+`sort`/`order` are whitelisted and interpolated into the `ORDER BY` clause,
+since SQL Server cannot bind an `ORDER BY` target as a query parameter.
 
 The response carries an **`X-Total-Count`** header with the total number of
 users matching the filter, independent of the pagination window — so clients
@@ -57,6 +62,7 @@ can render "showing 1–20 of _N_" without an extra request.
 ```bash
 curl -i 'http://localhost:3000/users?limit=2&offset=1'   # X-Total-Count: 3
 curl 'http://localhost:3000/users?name=alan'
+curl 'http://localhost:3000/users?sort=name&order=desc'
 ```
 
 ### Unique email constraint

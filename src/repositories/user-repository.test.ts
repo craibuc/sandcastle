@@ -32,6 +32,19 @@ describe('UserRepository', () => {
     expect(users[0].name).toBe('Alan Turing');
   });
 
+  it('findAll defaults to sorting by id ascending', async () => {
+    const users = await repo.findAll();
+    expect(users.map((u) => u.id)).toEqual([1, 2, 3]);
+  });
+
+  it('findAll sorts by name ascending and descending', async () => {
+    const asc = await repo.findAll({ sort: 'name', order: 'asc' });
+    expect(asc.map((u) => u.name)).toEqual(['Alan Turing', 'Grace Hopper', 'Katherine Johnson']);
+
+    const desc = await repo.findAll({ sort: 'name', order: 'desc' });
+    expect(desc.map((u) => u.name)).toEqual(['Katherine Johnson', 'Grace Hopper', 'Alan Turing']);
+  });
+
   it('count returns the total number of users, honouring the name filter', async () => {
     expect(await repo.count()).toBe(3);
     expect(await repo.count({ name: 'alan' })).toBe(1);

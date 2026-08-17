@@ -35,11 +35,30 @@ export class MssqlRequestError extends Error {
 /** SQL Server error number for a UNIQUE KEY / PRIMARY KEY constraint violation. */
 const UNIQUE_VIOLATION = 2627;
 
+/**
+ * DB columns clients may sort on, keyed by the API's lower-case sort field.
+ * ORDER BY columns cannot be bound as query parameters in SQL Server, so the
+ * repository interpolates the value — this whitelist is what keeps that safe.
+ */
+export const SORTABLE_COLUMNS = {
+  id: 'Id',
+  name: 'Name',
+  email: 'Email',
+} as const;
+
+export type SortColumn = (typeof SORTABLE_COLUMNS)[keyof typeof SORTABLE_COLUMNS];
+export type SortDirection = 'ASC' | 'DESC';
+
 /** Whitelisted SQL statements understood by the dummy database. */
 export const SQL = {
   selectAllUsers: 'SELECT Id, Name, Email FROM Users ORDER BY Id',
-  listUsers:
-    'SELECT Id, Name, Email FROM Users WHERE (@name IS NULL OR Name LIKE @name) ORDER BY Id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY',
+  /**
+   * Paginated, name-filtered list. `column`/`direction` are interpolated from
+   * the {@link SORTABLE_COLUMNS} whitelist because SQL Server does not allow
+   * `ORDER BY` targets to be bound parameters.
+   */
+  listUsers: (column: SortColumn, direction: SortDirection): string =>
+    `SELECT Id, Name, Email FROM Users WHERE (@name IS NULL OR Name LIKE @name) ORDER BY ${column} ${direction} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
   countUsers:
     'SELECT COUNT(*) AS Total FROM Users WHERE (@name IS NULL OR Name LIKE @name)',
   selectUserById: 'SELECT Id, Name, Email FROM Users WHERE Id = @id',
@@ -63,6 +82,22 @@ const filterByName = (rows: UserRow[], nameParam: unknown): UserRow[] => {
   const needle = String(nameParam).replace(/%/g, '').toLowerCase();
   return rows.filter((u) => u.Name.toLowerCase().includes(needle));
 };
+
+/** Matches any {@link SQL.listUsers} statement, capturing its ORDER BY column and direction. */
+const LIST_USERS_RE =
+  /^SELECT Id, Name, Email FROM Users WHERE \(@name IS NULL OR Name LIKE @name\) ORDER BY (Id|Name|Email) (ASC|DESC) OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY$/;
+
+/**
+ * Orders rows by a whitelisted column and direction. `Id` sorts numerically;
+ * text columns sort case-insensitively, matching SQL Server's default collation.
+ */
+const compareBy =
+  (column: SortColumn, direction: SortDirection) =>
+  (a: UserRow, b: UserRow): number => {
+    const sign = direction === 'DESC' ? -1 : 1;
+    if (column === 'Id') return sign * (a.Id - b.Id);
+    return sign * a[column].toLowerCase().localeCompare(b[column].toLowerCase());
+  };
 
 const SEED_USERS: UserRow[] = [
   { Id: 1, Name: 'Grace Hopper', Email: 'grace@example.com' },
@@ -125,19 +160,23 @@ export class DummyMssqlDatabase {
 
   /** @internal Dispatch a normalised statement. Called by {@link DummyRequest}. */
   execute<T>(sql: string, params: Map<string, unknown>): QueryResult<T> {
+    const listMatch = LIST_USERS_RE.exec(sql);
+    if (listMatch) {
+      const column = listMatch[1] as SortColumn;
+      const direction = listMatch[2] as SortDirection;
+      const offset = Number(params.get('offset')) || 0;
+      const limitParam = params.get('limit');
+      const limit = limitParam == null ? this.users.length : Number(limitParam);
+      const rows = [...filterByName(this.users, params.get('name'))].sort(
+        compareBy(column, direction),
+      );
+      const page = rows.slice(offset, offset + limit);
+      return this.wrap(page.map((u) => ({ ...u })));
+    }
+
     switch (sql) {
       case normalise(SQL.selectAllUsers):
         return this.wrap(this.users.map((u) => ({ ...u })));
-
-      case normalise(SQL.listUsers): {
-        const offset = Number(params.get('offset')) || 0;
-        const limitParam = params.get('limit');
-        const limit = limitParam == null ? this.users.length : Number(limitParam);
-        const sorted = [...this.users].sort((a, b) => a.Id - b.Id);
-        const rows = filterByName(sorted, params.get('name'));
-        const page = rows.slice(offset, offset + limit);
-        return this.wrap(page.map((u) => ({ ...u })));
-      }
 
       case normalise(SQL.countUsers): {
         const rows = filterByName(this.users, params.get('name'));
