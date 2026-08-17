@@ -58,11 +58,38 @@ const idParams = {
 const userRef = { $ref: 'User#' };
 const errorRef = { $ref: 'Error#' };
 
+const listUsersQuery = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    limit: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 100,
+      default: 20,
+      description: 'Maximum number of rows to return',
+    },
+    offset: {
+      type: 'integer',
+      minimum: 0,
+      default: 0,
+      description: 'Number of rows to skip',
+    },
+    name: {
+      type: 'string',
+      minLength: 1,
+      description: 'Filter by partial, case-insensitive name match',
+    },
+  },
+} as const;
+
 export const listUsersSchema = {
   tags: ['users'],
-  summary: 'List all users',
+  summary: 'List users (paginated, filterable by name)',
+  querystring: listUsersQuery,
   response: {
     200: { type: 'array', items: userRef },
+    400: errorRef,
   },
 } as const;
 

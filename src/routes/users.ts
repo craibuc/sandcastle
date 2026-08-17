@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { UserRepository } from '../repositories/user-repository.js';
 import type { DummyMssqlDatabase } from '../db/dummy-mssql.js';
-import type { UserInput, UserPatch } from '../types.js';
+import type { ListUsersOptions, UserInput, UserPatch } from '../types.js';
 import {
   listUsersSchema,
   getUserSchema,
@@ -26,8 +26,8 @@ const notFound = (reply: FastifyReply, message: string): FastifyReply =>
 export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify, opts) => {
   const repo = new UserRepository(opts.database);
 
-  fastify.get('/users', { schema: listUsersSchema }, async () => {
-    return repo.findAll();
+  fastify.get<{ Querystring: ListUsersOptions }>('/users', { schema: listUsersSchema }, async (request) => {
+    return repo.findAll(request.query);
   });
 
   fastify.get<{ Params: IdParams }>('/users/:id', { schema: getUserSchema }, async (request, reply) => {

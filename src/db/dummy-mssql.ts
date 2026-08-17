@@ -20,6 +20,8 @@ export interface UserRow {
 /** Whitelisted SQL statements understood by the dummy database. */
 export const SQL = {
   selectAllUsers: 'SELECT Id, Name, Email FROM Users ORDER BY Id',
+  listUsers:
+    'SELECT Id, Name, Email FROM Users WHERE (@name IS NULL OR Name LIKE @name) ORDER BY Id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY',
   selectUserById: 'SELECT Id, Name, Email FROM Users WHERE Id = @id',
   insertUser:
     'INSERT INTO Users (Name, Email) OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Email VALUES (@name, @email)',
@@ -76,6 +78,20 @@ export class DummyMssqlDatabase {
     switch (sql) {
       case normalise(SQL.selectAllUsers):
         return this.wrap(this.users.map((u) => ({ ...u })));
+
+      case normalise(SQL.listUsers): {
+        const nameParam = params.get('name');
+        const offset = Number(params.get('offset')) || 0;
+        const limitParam = params.get('limit');
+        const limit = limitParam == null ? this.users.length : Number(limitParam);
+        let rows = [...this.users].sort((a, b) => a.Id - b.Id);
+        if (nameParam != null) {
+          const needle = String(nameParam).replace(/%/g, '').toLowerCase();
+          rows = rows.filter((u) => u.Name.toLowerCase().includes(needle));
+        }
+        const page = rows.slice(offset, offset + limit);
+        return this.wrap(page.map((u) => ({ ...u })));
+      }
 
       case normalise(SQL.selectUserById): {
         const id = Number(params.get('id'));
