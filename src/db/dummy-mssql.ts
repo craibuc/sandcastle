@@ -83,9 +83,17 @@ const filterByName = (rows: UserRow[], nameParam: unknown): UserRow[] => {
   return rows.filter((u) => u.Name.toLowerCase().includes(needle));
 };
 
-/** Matches any {@link SQL.listUsers} statement, capturing its ORDER BY column and direction. */
-const LIST_USERS_RE =
-  /^SELECT Id, Name, Email FROM Users WHERE \(@name IS NULL OR Name LIKE @name\) ORDER BY (Id|Name|Email) (ASC|DESC) OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY$/;
+/**
+ * Every statement {@link SQL.listUsers} can produce, mapped back to the column
+ * and direction it sorts by. Built from {@link SQL.listUsers} itself so the
+ * recognised statements can never drift from the SQL the repository emits.
+ */
+const LIST_USERS_STATEMENTS = new Map<string, { column: SortColumn; direction: SortDirection }>();
+for (const column of Object.values(SORTABLE_COLUMNS)) {
+  for (const direction of ['ASC', 'DESC'] as const) {
+    LIST_USERS_STATEMENTS.set(normalise(SQL.listUsers(column, direction)), { column, direction });
+  }
+}
 
 /**
  * Orders rows by a whitelisted column and direction. `Id` sorts numerically;
@@ -160,10 +168,9 @@ export class DummyMssqlDatabase {
 
   /** @internal Dispatch a normalised statement. Called by {@link DummyRequest}. */
   execute<T>(sql: string, params: Map<string, unknown>): QueryResult<T> {
-    const listMatch = LIST_USERS_RE.exec(sql);
-    if (listMatch) {
-      const column = listMatch[1] as SortColumn;
-      const direction = listMatch[2] as SortDirection;
+    const listStatement = LIST_USERS_STATEMENTS.get(sql);
+    if (listStatement) {
+      const { column, direction } = listStatement;
       const offset = Number(params.get('offset')) || 0;
       const limitParam = params.get('limit');
       const limit = limitParam == null ? this.users.length : Number(limitParam);
