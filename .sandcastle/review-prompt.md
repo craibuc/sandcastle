@@ -6,11 +6,17 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 
 ## Branch diff
 
-!`git diff {{TARGET_BRANCH}}...{{BRANCH}}`
+<!-- Resolve the base branch locally first, then fall back to origin/. An
+     isolated sandbox (Vercel) receives only the issue branch plus remote-
+     tracking refs, so {{TARGET_BRANCH}} exists there as
+     origin/{{TARGET_BRANCH}}. A bind-mount sandbox (Docker) shares the host
+     .git and has it as a local branch. This form works in both. -->
+
+!`BASE=$(git rev-parse --verify -q {{TARGET_BRANCH}} || git rev-parse --verify -q origin/{{TARGET_BRANCH}}); git diff "$BASE"...{{BRANCH}}`
 
 ## Commits on this branch
 
-!`git log {{TARGET_BRANCH}}..{{BRANCH}} --oneline`
+!`BASE=$(git rev-parse --verify -q {{TARGET_BRANCH}} || git rev-parse --verify -q origin/{{TARGET_BRANCH}}); git log "$BASE"..{{BRANCH}} --oneline`
 
 # REVIEW PROCESS
 

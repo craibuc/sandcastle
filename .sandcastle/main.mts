@@ -27,7 +27,10 @@
 //   "scripts": { "sandcastle": "npx tsx .sandcastle/main.mts" }
 
 import * as sandcastle from "@ai-hero/sandcastle";
-import { vercel } from "@ai-hero/sandcastle/sandboxes/vercel";
+// Local provider, not @ai-hero/sandcastle/sandboxes/vercel: the bundled one
+// drops exec's `stdin`, so the agent receives an empty prompt. See the header
+// of ./vercel-stdin.mts for the full diagnosis.
+import { vercelWithStdin as vercel } from "./vercel-stdin.mts";
 import process from "node:process";
 import { z } from "zod";
 
