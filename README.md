@@ -58,6 +58,18 @@ startup rather than failing later as an opaque connection error.
 | PUT    | `/users/:id`  | Replace a user     |
 | PATCH  | `/users/:id`  | Partially update a user |
 | DELETE | `/users/:id`  | Delete a user      |
+| GET    | `/products`      | List products (paginated, filterable) |
+| GET    | `/products/:id`  | Get a product by id   |
+| POST   | `/products`      | Create a product      |
+| PUT    | `/products/:id`  | Replace a product     |
+| PATCH  | `/products/:id`  | Partially update a product |
+| DELETE | `/products/:id`  | Delete a product      |
+
+The `products` resource mirrors `users`: same pagination, `X-Total-Count` and
+RFC 5988 `Link` headers, and JSON-schema validation. A product has `name`,
+`price` (a non-negative number) and `description`; `GET /products` sorts by
+`id`, `name` or `price`. Products carry no unique constraint, so writes never
+return `409`.
 
 ### Health probe
 

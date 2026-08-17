@@ -3,7 +3,9 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { DummyMssqlDatabase, SQL } from './db/dummy-mssql.js';
 import { userRoutes } from './routes/users.js';
+import { productRoutes } from './routes/products.js';
 import { userSchema, userInputSchema, userPatchSchema, errorSchema } from './routes/user-schemas.js';
+import { productSchema, productInputSchema, productPatchSchema } from './routes/product-schemas.js';
 
 export interface BuildAppOptions {
   /** Injectable data source. Defaults to a freshly seeded dummy mssql database. */
@@ -24,6 +26,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.addSchema(userSchema);
   app.addSchema(userInputSchema);
   app.addSchema(userPatchSchema);
+  app.addSchema(productSchema);
+  app.addSchema(productInputSchema);
+  app.addSchema(productPatchSchema);
   app.addSchema(errorSchema);
 
   app.register(swagger, {
@@ -33,7 +38,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
         description: 'A REST API built with Fastify backed by a dummy mssql database.',
         version: '1.0.0',
       },
-      tags: [{ name: 'users', description: 'User management endpoints' }],
+      tags: [
+        { name: 'users', description: 'User management endpoints' },
+        { name: 'products', description: 'Product management endpoints' },
+      ],
     },
   });
 
@@ -68,6 +76,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   );
 
   app.register(userRoutes, { database });
+  app.register(productRoutes, { database });
 
   // Close the pool as part of Fastify's own shutdown so `app.close()` (and the
   // SIGINT/SIGTERM handlers that call it) release the database cleanly.

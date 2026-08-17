@@ -8,13 +8,21 @@
  * `ConnectionPool` in production without touching the calling code.
  *
  * Queries are recognised by matching against the whitelisted statements in
- * {@link SQL}; the store models a single `Users` table seeded with dummy rows.
+ * {@link SQL}; the store models a `Users` and a `Products` table, each seeded
+ * with dummy rows.
  */
 
 export interface UserRow {
   Id: number;
   Name: string;
   Email: string;
+}
+
+export interface ProductRow {
+  Id: number;
+  Name: string;
+  Price: number;
+  Description: string;
 }
 
 /**
@@ -49,6 +57,19 @@ export const SORTABLE_COLUMNS = {
 export type SortColumn = (typeof SORTABLE_COLUMNS)[keyof typeof SORTABLE_COLUMNS];
 export type SortDirection = 'ASC' | 'DESC';
 
+/**
+ * DB columns clients may sort products on, keyed by the API's lower-case sort
+ * field. Interpolated into the `ORDER BY`, so — like {@link SORTABLE_COLUMNS} —
+ * this whitelist is what keeps that interpolation safe.
+ */
+export const PRODUCT_SORTABLE_COLUMNS = {
+  id: 'Id',
+  name: 'Name',
+  price: 'Price',
+} as const;
+
+export type ProductSortColumn = (typeof PRODUCT_SORTABLE_COLUMNS)[keyof typeof PRODUCT_SORTABLE_COLUMNS];
+
 /** Whitelisted SQL statements understood by the dummy database. */
 export const SQL = {
   /** Trivial round-trip used to verify database connectivity (a readiness probe). */
@@ -69,6 +90,22 @@ export const SQL = {
   updateUser:
     'UPDATE Users SET Name = @name, Email = @email OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Email WHERE Id = @id',
   deleteUser: 'DELETE FROM Users WHERE Id = @id',
+  selectAllProducts: 'SELECT Id, Name, Price, Description FROM Products ORDER BY Id',
+  /**
+   * Paginated, name-filtered product list. `column`/`direction` are
+   * interpolated from the {@link PRODUCT_SORTABLE_COLUMNS} whitelist because
+   * SQL Server does not allow `ORDER BY` targets to be bound parameters.
+   */
+  listProducts: (column: ProductSortColumn, direction: SortDirection): string =>
+    `SELECT Id, Name, Price, Description FROM Products WHERE (@name IS NULL OR Name LIKE @name) ORDER BY ${column} ${direction} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
+  countProducts:
+    'SELECT COUNT(*) AS Total FROM Products WHERE (@name IS NULL OR Name LIKE @name)',
+  selectProductById: 'SELECT Id, Name, Price, Description FROM Products WHERE Id = @id',
+  insertProduct:
+    'INSERT INTO Products (Name, Price, Description) OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Price, INSERTED.Description VALUES (@name, @price, @description)',
+  updateProduct:
+    'UPDATE Products SET Name = @name, Price = @price, Description = @description OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Price, INSERTED.Description WHERE Id = @id',
+  deleteProduct: 'DELETE FROM Products WHERE Id = @id',
 } as const;
 
 export interface QueryResult<T> {
@@ -79,7 +116,7 @@ export interface QueryResult<T> {
 const normalise = (sql: string): string => sql.replace(/\s+/g, ' ').trim();
 
 /** Apply the `@name` LIKE filter in memory; a null parameter matches all rows. */
-const filterByName = (rows: UserRow[], nameParam: unknown): UserRow[] => {
+const filterByName = <T extends { Name: string }>(rows: T[], nameParam: unknown): T[] => {
   if (nameParam == null) return rows;
   const needle = String(nameParam).replace(/%/g, '').toLowerCase();
   return rows.filter((u) => u.Name.toLowerCase().includes(needle));
@@ -115,6 +152,37 @@ const SEED_USERS: UserRow[] = [
   { Id: 3, Name: 'Katherine Johnson', Email: 'katherine@example.com' },
 ];
 
+/**
+ * Every statement {@link SQL.listProducts} can produce, mapped back to the
+ * column and direction it sorts by. Built from {@link SQL.listProducts} itself
+ * so the recognised statements can never drift from the SQL the repository emits.
+ */
+const LIST_PRODUCTS_STATEMENTS = new Map<string, { column: ProductSortColumn; direction: SortDirection }>();
+for (const column of Object.values(PRODUCT_SORTABLE_COLUMNS)) {
+  for (const direction of ['ASC', 'DESC'] as const) {
+    LIST_PRODUCTS_STATEMENTS.set(normalise(SQL.listProducts(column, direction)), { column, direction });
+  }
+}
+
+/**
+ * Orders products by a whitelisted column and direction. `Id`/`Price` sort
+ * numerically; `Name` sorts case-insensitively, matching SQL Server's default
+ * collation.
+ */
+const compareProductsBy =
+  (column: ProductSortColumn, direction: SortDirection) =>
+  (a: ProductRow, b: ProductRow): number => {
+    const sign = direction === 'DESC' ? -1 : 1;
+    if (column === 'Name') return sign * a.Name.toLowerCase().localeCompare(b.Name.toLowerCase());
+    return sign * (a[column] - b[column]);
+  };
+
+const SEED_PRODUCTS: ProductRow[] = [
+  { Id: 1, Name: 'Widget', Price: 9.99, Description: 'A basic widget' },
+  { Id: 2, Name: 'Gadget', Price: 19.99, Description: 'A fancy gadget' },
+  { Id: 3, Name: 'Gizmo', Price: 4.5, Description: 'A small gizmo' },
+];
+
 export class DummyRequest {
   private readonly params = new Map<string, unknown>();
 
@@ -139,11 +207,15 @@ export class DummyRequest {
 export class DummyMssqlDatabase {
   private users: UserRow[];
   private nextId: number;
+  private products: ProductRow[];
+  private nextProductId: number;
   private open = true;
 
-  constructor(seed: UserRow[] = SEED_USERS) {
+  constructor(seed: UserRow[] = SEED_USERS, productSeed: ProductRow[] = SEED_PRODUCTS) {
     this.users = seed.map((u) => ({ ...u }));
     this.nextId = this.users.reduce((max, u) => Math.max(max, u.Id), 0) + 1;
+    this.products = productSeed.map((p) => ({ ...p }));
+    this.nextProductId = this.products.reduce((max, p) => Math.max(max, p.Id), 0) + 1;
   }
 
   /** Whether the pool is open for requests, mirroring `ConnectionPool.connected`. */
@@ -211,6 +283,19 @@ export class DummyMssqlDatabase {
       return this.wrap(page.map((u) => ({ ...u })));
     }
 
+    const productListStatement = LIST_PRODUCTS_STATEMENTS.get(sql);
+    if (productListStatement) {
+      const { column, direction } = productListStatement;
+      const offset = Number(params.get('offset')) || 0;
+      const limitParam = params.get('limit');
+      const limit = limitParam == null ? this.products.length : Number(limitParam);
+      const rows = [...filterByName(this.products, params.get('name'))].sort(
+        compareProductsBy(column, direction),
+      );
+      const page = rows.slice(offset, offset + limit);
+      return this.wrap(page.map((p) => ({ ...p })));
+    }
+
     switch (sql) {
       case normalise(SQL.ping):
         return this.wrap([{ Ok: 1 }], 1);
@@ -256,6 +341,47 @@ export class DummyMssqlDatabase {
         const before = this.users.length;
         this.users = this.users.filter((u) => u.Id !== id);
         return this.wrap([], before - this.users.length);
+      }
+
+      case normalise(SQL.selectAllProducts):
+        return this.wrap(this.products.map((p) => ({ ...p })));
+
+      case normalise(SQL.countProducts): {
+        const rows = filterByName(this.products, params.get('name'));
+        return this.wrap([{ Total: rows.length }], rows.length);
+      }
+
+      case normalise(SQL.selectProductById): {
+        const id = Number(params.get('id'));
+        return this.wrap(this.products.filter((p) => p.Id === id).map((p) => ({ ...p })));
+      }
+
+      case normalise(SQL.insertProduct): {
+        const row: ProductRow = {
+          Id: this.nextProductId++,
+          Name: String(params.get('name')),
+          Price: Number(params.get('price')),
+          Description: String(params.get('description')),
+        };
+        this.products.push(row);
+        return this.wrap([{ ...row }], 1);
+      }
+
+      case normalise(SQL.updateProduct): {
+        const id = Number(params.get('id'));
+        const existing = this.products.find((p) => p.Id === id);
+        if (!existing) return this.wrap([], 0);
+        existing.Name = String(params.get('name'));
+        existing.Price = Number(params.get('price'));
+        existing.Description = String(params.get('description'));
+        return this.wrap([{ ...existing }], 1);
+      }
+
+      case normalise(SQL.deleteProduct): {
+        const id = Number(params.get('id'));
+        const before = this.products.length;
+        this.products = this.products.filter((p) => p.Id !== id);
+        return this.wrap([], before - this.products.length);
       }
 
       default:
