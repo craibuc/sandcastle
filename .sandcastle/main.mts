@@ -16,13 +16,19 @@
 // The outer loop repeats up to MAX_ITERATIONS times so that newly unblocked
 // issues are picked up after each round of merges.
 //
+// Agents execute in Vercel Firecracker microVMs, so no container engine is
+// needed on the host — only Node, to run this file. The orchestrator itself
+// (this loop) still runs on your machine: it builds the git worktrees, copies
+// them into each sandbox, collects commits, and merges into your local HEAD.
+//
 // Usage:
 //   npx tsx .sandcastle/main.mts
 // Or add to package.json:
 //   "scripts": { "sandcastle": "npx tsx .sandcastle/main.mts" }
 
 import * as sandcastle from "@ai-hero/sandcastle";
-import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
+import { vercel } from "@ai-hero/sandcastle/sandboxes/vercel";
+import process from "node:process";
 import { z } from "zod";
 
 // The planner emits its plan as JSON inside <plan> tags; Output.object extracts
@@ -43,16 +49,92 @@ const planSchema = z.object({
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
 
+// Preflight. Vercel credentials are read HOST-side by the @vercel/sandbox SDK,
+// so they must be real shell environment variables.
+//
+// Putting them in .sandcastle/.env is NOT enough: resolveEnv() parses that file
+// only to build the env injected *into* the sandbox — it never writes to the
+// host's process.env. (.sandcastle/.env stays the right home for
+// CLAUDE_CODE_OAUTH_TOKEN and GH_TOKEN, which the agent needs inside the VM.)
+if (!process.env.VERCEL_TOKEN && !process.env.VERCEL_OIDC_TOKEN) {
+  console.error(
+    "Missing Vercel credentials. Export VERCEL_TOKEN (or VERCEL_OIDC_TOKEN when\n" +
+      "running on Vercel infrastructure) before starting. These belong in your\n" +
+      "shell, not .sandcastle/.env — the SDK runs on the host, not in the sandbox.",
+  );
+  process.exit(1);
+}
+
+// Shared sandbox settings, so planner, implementers, and merger all get
+// identical tooling. Called per sandbox — each invocation is a separate microVM.
+const sandbox = () =>
+  vercel({
+    // Token falls back to VERCEL_OIDC_TOKEN / VERCEL_TOKEN from the environment.
+    projectId: process.env.VERCEL_PROJECT_ID,
+    teamId: process.env.VERCEL_TEAM_ID,
+    runtime: "node24",
+    // Each vCPU carries 2048 MB. The implementer runs up to 100 iterations of
+    // an opus agent plus a test suite, so give it real headroom.
+    resources: { vcpus: 4 },
+    // Auto-terminate backstop. Must exceed the longest plausible implementer
+    // run — a microVM killed mid-run loses uncommitted work. Kept tight rather
+    // than generous: if this orchestrator dies, leaked VMs bill until it fires.
+    timeout: 60 * 60 * 1000,
+  });
+
 // Hooks run inside the sandbox before the agent starts each iteration.
-// npm install ensures the sandbox always has fresh dependencies.
+//
+// These replace the Dockerfile. Vercel has no image build step — it boots a
+// stock `runtime` ("node24") — so everything .sandcastle/Dockerfile bakes in
+// (git, jq, gh, Claude Code CLI) must be installed per-sandbox here. Each
+// install is guarded with `command -v`, so it is nearly free when the base
+// runtime already provides the tool.
 const hooks = {
-  sandbox: { onSandboxReady: [{ command: "npm install" }] },
+  sandbox: {
+    onSandboxReady: [
+      // git and jq. The node24 runtime is expected to ship git, but this is
+      // unverified — the guard makes it a no-op when present.
+      {
+        command:
+          "command -v git >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || " +
+          "(sudo apt-get update && sudo apt-get install -y git jq)",
+      },
+      // GitHub CLI — the prompts use it to read and close issues.
+      // Drop this block if your agents never touch GitHub (~15s per sandbox).
+      {
+        command:
+          "command -v gh >/dev/null 2>&1 || " +
+          "(curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg " +
+          "| sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && " +
+          'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] ' +
+          'https://cli.github.com/packages stable main" ' +
+          "| sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && " +
+          "sudo apt-get update && sudo apt-get install -y gh)",
+      },
+      // Claude Code CLI — the agent binary itself.
+      //
+      // install.sh drops the binary in ~/.local/bin. The Dockerfile handles
+      // that with `ENV PATH="/home/agent/.local/bin:$PATH"`, which has no
+      // equivalent here, so symlink into /usr/local/bin rather than trusting
+      // the runtime's default PATH. Sandbox cwd is /vercel/sandbox/workspace
+      // (VERCEL_REPO_PATH in src/sandboxes/vercel.ts), not /home/agent.
+      {
+        command:
+          "command -v claude >/dev/null 2>&1 || " +
+          "(curl -fsSL https://claude.ai/install.sh | bash && " +
+          'sudo ln -sf "$HOME/.local/bin/claude" /usr/local/bin/claude)',
+      },
+      // Project dependencies. Now the primary install path — see below.
+      { command: "npm install" },
+    ],
+  },
 };
 
-// Copy node_modules from the host into the worktree before each sandbox
-// starts. Avoids a full npm install from scratch; the hook above handles
-// platform-specific binaries and any packages added since the last copy.
-const copyToWorktree = ["node_modules"];
+// NOTE: copyToWorktree previously carried node_modules in from the host to skip
+// a cold npm install. Dropped for Vercel: the provider's copyIn() tars the
+// directory host-side, uploads it, and untars in the VM, so a 100MB+
+// node_modules becomes a network transfer per sandbox — slower than the
+// npm install hook above. Re-add it only if you measure otherwise.
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -72,7 +154,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   const plan = await sandcastle.run({
     hooks,
-    sandbox: docker(),
+    sandbox: sandbox(),
     name: "planner",
     // One iteration is enough: the planner just needs to read and reason,
     // not write code. (Structured output requires maxIterations: 1.)
@@ -113,16 +195,16 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
   const settled = await Promise.allSettled(
     issues.map(async (issue) => {
-      const sandbox = await sandcastle.createSandbox({
+      // Renamed from `sandbox` to `sbx` — `sandbox` is now the provider factory.
+      const sbx = await sandcastle.createSandbox({
         branch: issue.branch,
-        sandbox: docker(),
+        sandbox: sandbox(),
         hooks,
-        copyToWorktree,
       });
 
       try {
         // Run the implementer
-        const implement = await sandbox.run({
+        const implement = await sbx.run({
           name: "implementer",
           maxIterations: 100,
           agent: sandcastle.claudeCode("claude-opus-4-8"),
@@ -136,7 +218,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
         // Only review if the implementer produced commits
         if (implement.commits.length > 0) {
-          const review = await sandbox.run({
+          const review = await sbx.run({
             name: "reviewer",
             maxIterations: 1,
             agent: sandcastle.claudeCode("claude-opus-4-8"),
@@ -147,7 +229,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           });
 
           // Merge commits from both runs so the merge phase sees all of them.
-          // Each sandbox.run() only returns commits from its own run.
+          // Each sbx.run() only returns commits from its own run.
           return {
             ...review,
             commits: [...implement.commits, ...review.commits],
@@ -156,7 +238,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
         return implement;
       } finally {
-        await sandbox.close();
+        await sbx.close();
       }
     }),
   );
@@ -207,7 +289,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   await sandcastle.run({
     hooks,
-    sandbox: docker(),
+    sandbox: sandbox(),
     name: "merger",
     maxIterations: 1,
     agent: sandcastle.claudeCode("claude-opus-4-8"),
