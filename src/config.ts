@@ -33,7 +33,7 @@ const parseBool = (value: string | undefined, fallback: boolean): boolean => {
 };
 
 /**
- * Parse a non-negative integer env var within `[min, max]`, throwing a
+ * Parse an integer env var within `[min, max]`, throwing a
  * descriptive error (naming the offending variable) so misconfiguration fails
  * fast at startup rather than surfacing as an opaque connection error later.
  */
