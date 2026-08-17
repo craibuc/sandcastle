@@ -19,7 +19,7 @@ export interface ProcessLike {
  * Wires SIGINT/SIGTERM to a graceful shutdown: closing the Fastify instance
  * (which runs its `onClose` hooks, including closing the database pool) before
  * exiting. A clean close exits 0; a failed close exits 1 so orchestrators can
- * distinguish an orderly stop from a stuck one.
+ * distinguish an orderly stop from a failed one.
  */
 export function installShutdownHandlers(app: ClosableApp, proc: ProcessLike): void {
   for (const signal of SHUTDOWN_SIGNALS) {
