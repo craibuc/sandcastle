@@ -1,0 +1,119 @@
+/**
+ * A dummy in-memory stand-in for the `mssql` package.
+ *
+ * It emulates the shape of the real driver's API — `db.request()`, chainable
+ * `.input(name, value)`, and `.query(sql)` resolving to
+ * `{ recordset, rowsAffected }` — so the repository layer can be written exactly
+ * as it would be against a real SQL Server, then swapped for a genuine
+ * `ConnectionPool` in production without touching the calling code.
+ *
+ * Queries are recognised by matching against the whitelisted statements in
+ * {@link SQL}; the store models a single `Users` table seeded with dummy rows.
+ */
+
+export interface UserRow {
+  Id: number;
+  Name: string;
+  Email: string;
+}
+
+/** Whitelisted SQL statements understood by the dummy database. */
+export const SQL = {
+  selectAllUsers: 'SELECT Id, Name, Email FROM Users ORDER BY Id',
+  selectUserById: 'SELECT Id, Name, Email FROM Users WHERE Id = @id',
+  insertUser:
+    'INSERT INTO Users (Name, Email) OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Email VALUES (@name, @email)',
+  updateUser:
+    'UPDATE Users SET Name = @name, Email = @email OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Email WHERE Id = @id',
+  deleteUser: 'DELETE FROM Users WHERE Id = @id',
+} as const;
+
+export interface QueryResult<T> {
+  recordset: T[];
+  rowsAffected: number[];
+}
+
+const normalise = (sql: string): string => sql.replace(/\s+/g, ' ').trim();
+
+const SEED_USERS: UserRow[] = [
+  { Id: 1, Name: 'Grace Hopper', Email: 'grace@example.com' },
+  { Id: 2, Name: 'Alan Turing', Email: 'alan@example.com' },
+  { Id: 3, Name: 'Katherine Johnson', Email: 'katherine@example.com' },
+];
+
+export class DummyRequest {
+  private readonly params = new Map<string, unknown>();
+
+  constructor(private readonly db: DummyMssqlDatabase) {}
+
+  /** Bind a named parameter, mirroring `mssql`'s `request.input()`. */
+  input(name: string, value: unknown): this {
+    this.params.set(name, value);
+    return this;
+  }
+
+  /** Execute a whitelisted statement against the in-memory store. */
+  query<T = UserRow>(sql: string): Promise<QueryResult<T>> {
+    return Promise.resolve(this.db.execute<T>(normalise(sql), this.params));
+  }
+}
+
+export class DummyMssqlDatabase {
+  private users: UserRow[];
+  private nextId: number;
+
+  constructor(seed: UserRow[] = SEED_USERS) {
+    this.users = seed.map((u) => ({ ...u }));
+    this.nextId = this.users.reduce((max, u) => Math.max(max, u.Id), 0) + 1;
+  }
+
+  request(): DummyRequest {
+    return new DummyRequest(this);
+  }
+
+  /** @internal Dispatch a normalised statement. Called by {@link DummyRequest}. */
+  execute<T>(sql: string, params: Map<string, unknown>): QueryResult<T> {
+    switch (sql) {
+      case normalise(SQL.selectAllUsers):
+        return this.wrap(this.users.map((u) => ({ ...u })));
+
+      case normalise(SQL.selectUserById): {
+        const id = Number(params.get('id'));
+        return this.wrap(this.users.filter((u) => u.Id === id).map((u) => ({ ...u })));
+      }
+
+      case normalise(SQL.insertUser): {
+        const row: UserRow = {
+          Id: this.nextId++,
+          Name: String(params.get('name')),
+          Email: String(params.get('email')),
+        };
+        this.users.push(row);
+        return this.wrap([{ ...row }], 1);
+      }
+
+      case normalise(SQL.updateUser): {
+        const id = Number(params.get('id'));
+        const existing = this.users.find((u) => u.Id === id);
+        if (!existing) return this.wrap([], 0);
+        existing.Name = String(params.get('name'));
+        existing.Email = String(params.get('email'));
+        return this.wrap([{ ...existing }], 1);
+      }
+
+      case normalise(SQL.deleteUser): {
+        const id = Number(params.get('id'));
+        const before = this.users.length;
+        this.users = this.users.filter((u) => u.Id !== id);
+        return this.wrap([], before - this.users.length);
+      }
+
+      default:
+        throw new Error(`Unrecognised SQL statement: ${sql}`);
+    }
+  }
+
+  private wrap<T>(recordset: unknown[], rowsAffected = recordset.length): QueryResult<T> {
+    return { recordset: recordset as T[], rowsAffected: [rowsAffected] };
+  }
+}
