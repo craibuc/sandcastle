@@ -22,6 +22,8 @@ export const SQL = {
   selectAllUsers: 'SELECT Id, Name, Email FROM Users ORDER BY Id',
   listUsers:
     'SELECT Id, Name, Email FROM Users WHERE (@name IS NULL OR Name LIKE @name) ORDER BY Id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY',
+  countUsers:
+    'SELECT COUNT(*) AS Total FROM Users WHERE (@name IS NULL OR Name LIKE @name)',
   selectUserById: 'SELECT Id, Name, Email FROM Users WHERE Id = @id',
   insertUser:
     'INSERT INTO Users (Name, Email) OUTPUT INSERTED.Id, INSERTED.Name, INSERTED.Email VALUES (@name, @email)',
@@ -91,6 +93,16 @@ export class DummyMssqlDatabase {
         }
         const page = rows.slice(offset, offset + limit);
         return this.wrap(page.map((u) => ({ ...u })));
+      }
+
+      case normalise(SQL.countUsers): {
+        const nameParam = params.get('name');
+        let rows = this.users;
+        if (nameParam != null) {
+          const needle = String(nameParam).replace(/%/g, '').toLowerCase();
+          rows = rows.filter((u) => u.Name.toLowerCase().includes(needle));
+        }
+        return this.wrap([{ Total: rows.length }], rows.length);
       }
 
       case normalise(SQL.selectUserById): {
