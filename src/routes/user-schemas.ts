@@ -108,6 +108,10 @@ export const listUsersSchema = {
           type: 'integer',
           description: 'Total number of users matching the filter, ignoring pagination',
         },
+        Link: {
+          type: 'string',
+          description: 'RFC 5988 pagination links (first/prev/next/last) preserving the filter',
+        },
       },
     },
     400: errorRef,

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { DuplicateEmailError, UserRepository } from '../repositories/user-repository.js';
 import type { DummyMssqlDatabase } from '../db/dummy-mssql.js';
 import type { ListUsersOptions, UserInput, UserPatch } from '../types.js';
+import { buildLinkHeader } from './pagination.js';
 import {
   listUsersSchema,
   getUserSchema,
@@ -32,6 +33,9 @@ export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify,
   fastify.get<{ Querystring: ListUsersOptions }>('/users', { schema: listUsersSchema }, async (request, reply) => {
     const [users, total] = await Promise.all([repo.findAll(request.query), repo.count(request.query)]);
     reply.header('X-Total-Count', total);
+    const { limit = 20, offset = 0, name, sort, order } = request.query;
+    const link = buildLinkHeader({ path: '/users', limit, offset, total, query: { name, sort, order } });
+    if (link) reply.header('Link', link);
     return users;
   });
 
