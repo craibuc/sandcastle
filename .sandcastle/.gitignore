@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Env files (secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+logs
+*.log
+npm-debug.log*
+
+worktrees/
