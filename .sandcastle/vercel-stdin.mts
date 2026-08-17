@@ -63,6 +63,16 @@ export interface VercelStdinOptions {
   readonly networkPolicy?: Record<string, unknown>;
   readonly env?: Record<string, string>;
   readonly maxOutputTailChars?: number;
+  /**
+   * Whether the sandbox survives being stopped. Defaults to FALSE here.
+   *
+   * Vercel v2 sandboxes are persistent by default, and stopping a persistent
+   * sandbox snapshots its filesystem — billed as snapshot storage until it
+   * expires (30 days). Sandcastle creates one sandbox per run and never
+   * resumes it, so every snapshot is pure waste, and each carries a full
+   * node_modules. See upstream PR #882.
+   */
+  readonly persistent?: boolean;
 }
 
 /** Keeps only the last `max` characters pushed. */
@@ -91,7 +101,11 @@ export const vercelWithStdin = (options?: VercelStdinOptions) =>
       const maxTail = options?.maxOutputTailChars ?? MAX_TAIL_CHARS;
       const { Sandbox } = await import("@vercel/sandbox");
 
-      const createParams: Record<string, unknown> = { env: createOptions.env };
+      const createParams: Record<string, unknown> = {
+        env: createOptions.env,
+        // Opt out of snapshot-on-stop unless explicitly overridden.
+        persistent: options?.persistent ?? false,
+      };
       if (options?.token) createParams.token = options.token;
       if (options?.projectId) createParams.projectId = options.projectId;
       if (options?.teamId) createParams.teamId = options.teamId;
