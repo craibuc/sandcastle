@@ -39,6 +39,13 @@ export interface QueryResult<T> {
 
 const normalise = (sql: string): string => sql.replace(/\s+/g, ' ').trim();
 
+/** Apply the `@name` LIKE filter in memory; a null parameter matches all rows. */
+const filterByName = (rows: UserRow[], nameParam: unknown): UserRow[] => {
+  if (nameParam == null) return rows;
+  const needle = String(nameParam).replace(/%/g, '').toLowerCase();
+  return rows.filter((u) => u.Name.toLowerCase().includes(needle));
+};
+
 const SEED_USERS: UserRow[] = [
   { Id: 1, Name: 'Grace Hopper', Email: 'grace@example.com' },
   { Id: 2, Name: 'Alan Turing', Email: 'alan@example.com' },
@@ -82,26 +89,17 @@ export class DummyMssqlDatabase {
         return this.wrap(this.users.map((u) => ({ ...u })));
 
       case normalise(SQL.listUsers): {
-        const nameParam = params.get('name');
         const offset = Number(params.get('offset')) || 0;
         const limitParam = params.get('limit');
         const limit = limitParam == null ? this.users.length : Number(limitParam);
-        let rows = [...this.users].sort((a, b) => a.Id - b.Id);
-        if (nameParam != null) {
-          const needle = String(nameParam).replace(/%/g, '').toLowerCase();
-          rows = rows.filter((u) => u.Name.toLowerCase().includes(needle));
-        }
+        const sorted = [...this.users].sort((a, b) => a.Id - b.Id);
+        const rows = filterByName(sorted, params.get('name'));
         const page = rows.slice(offset, offset + limit);
         return this.wrap(page.map((u) => ({ ...u })));
       }
 
       case normalise(SQL.countUsers): {
-        const nameParam = params.get('name');
-        let rows = this.users;
-        if (nameParam != null) {
-          const needle = String(nameParam).replace(/%/g, '').toLowerCase();
-          rows = rows.filter((u) => u.Name.toLowerCase().includes(needle));
-        }
+        const rows = filterByName(this.users, params.get('name'));
         return this.wrap([{ Total: rows.length }], rows.length);
       }
 
