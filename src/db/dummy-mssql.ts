@@ -17,6 +17,24 @@ export interface UserRow {
   Email: string;
 }
 
+/**
+ * Mimics the real `mssql` driver's `RequestError`, which carries a SQL Server
+ * error `number`. A `UNIQUE KEY` violation surfaces as number 2627, letting
+ * callers detect constraint breaches exactly as they would in production.
+ */
+export class MssqlRequestError extends Error {
+  constructor(
+    message: string,
+    readonly number: number,
+  ) {
+    super(message);
+    this.name = 'RequestError';
+  }
+}
+
+/** SQL Server error number for a UNIQUE KEY / PRIMARY KEY constraint violation. */
+const UNIQUE_VIOLATION = 2627;
+
 /** Whitelisted SQL statements understood by the dummy database. */
 export const SQL = {
   selectAllUsers: 'SELECT Id, Name, Email FROM Users ORDER BY Id',
@@ -63,9 +81,13 @@ export class DummyRequest {
     return this;
   }
 
-  /** Execute a whitelisted statement against the in-memory store. */
-  query<T = UserRow>(sql: string): Promise<QueryResult<T>> {
-    return Promise.resolve(this.db.execute<T>(normalise(sql), this.params));
+  /**
+   * Execute a whitelisted statement against the in-memory store. Errors
+   * (e.g. a unique-constraint violation) surface as a rejected promise, just
+   * as the real `mssql` driver reports them.
+   */
+  async query<T = UserRow>(sql: string): Promise<QueryResult<T>> {
+    return this.db.execute<T>(normalise(sql), this.params);
   }
 }
 
@@ -80,6 +102,25 @@ export class DummyMssqlDatabase {
 
   request(): DummyRequest {
     return new DummyRequest(this);
+  }
+
+  /**
+   * Emulates the `UNIQUE` constraint on `Users.Email` (case-insensitive, as
+   * under SQL Server's default collation). Throws the same error the real
+   * driver would when a duplicate is written; `exceptId` lets an UPDATE keep
+   * a row's own email.
+   */
+  private assertEmailAvailable(email: string, exceptId?: number): void {
+    const needle = email.toLowerCase();
+    const clash = this.users.some(
+      (u) => u.Id !== exceptId && u.Email.toLowerCase() === needle,
+    );
+    if (clash) {
+      throw new MssqlRequestError(
+        `Violation of UNIQUE KEY constraint 'UQ_Users_Email'. Cannot insert duplicate key in object 'dbo.Users'. The duplicate key value is (${email}).`,
+        UNIQUE_VIOLATION,
+      );
+    }
   }
 
   /** @internal Dispatch a normalised statement. Called by {@link DummyRequest}. */
@@ -109,10 +150,12 @@ export class DummyMssqlDatabase {
       }
 
       case normalise(SQL.insertUser): {
+        const email = String(params.get('email'));
+        this.assertEmailAvailable(email);
         const row: UserRow = {
           Id: this.nextId++,
           Name: String(params.get('name')),
-          Email: String(params.get('email')),
+          Email: email,
         };
         this.users.push(row);
         return this.wrap([{ ...row }], 1);
@@ -122,8 +165,10 @@ export class DummyMssqlDatabase {
         const id = Number(params.get('id'));
         const existing = this.users.find((u) => u.Id === id);
         if (!existing) return this.wrap([], 0);
+        const email = String(params.get('email'));
+        this.assertEmailAvailable(email, id);
         existing.Name = String(params.get('name'));
-        existing.Email = String(params.get('email'));
+        existing.Email = email;
         return this.wrap([{ ...existing }], 1);
       }
 

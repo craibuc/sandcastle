@@ -117,6 +117,43 @@ describe('User REST API', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('POST /users rejects a duplicate email with 409', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/users',
+      payload: { name: 'Grace Clone', email: 'grace@example.com' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ statusCode: 409, error: 'Conflict' });
+  });
+
+  it('PUT /users/:id rejects an email already used by another user with 409', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/users/2',
+      payload: { name: 'Alan Turing', email: 'grace@example.com' },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('PATCH /users/:id rejects an email already used by another user with 409', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/users/2',
+      payload: { email: 'grace@example.com' },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('PUT /users/:id succeeds when keeping the user\'s own email', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/users/1',
+      payload: { name: 'Grace Renamed', email: 'grace@example.com' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
   it('PUT /users/:id updates an existing user', async () => {
     const res = await app.inject({
       method: 'PUT',

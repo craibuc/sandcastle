@@ -59,6 +59,20 @@ curl -i 'http://localhost:3000/users?limit=2&offset=1'   # X-Total-Count: 3
 curl 'http://localhost:3000/users?name=alan'
 ```
 
+### Unique email constraint
+
+`Email` is unique. The dummy database emulates SQL Server's `UNIQUE KEY`
+constraint (case-insensitive, error `2627`), so a `POST`, `PUT` or `PATCH`
+that would duplicate another user's email is rejected with **`409 Conflict`**:
+
+```bash
+curl -i -X POST http://localhost:3000/users \
+  -H 'content-type: application/json' \
+  -d '{"name":"Clone","email":"grace@example.com"}'   # 409 Conflict
+```
+
+An update that keeps the user's _own_ email still succeeds.
+
 ## Scripts
 
 | Script              | Description                     |
