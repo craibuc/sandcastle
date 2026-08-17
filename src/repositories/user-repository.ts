@@ -1,0 +1,54 @@
+import { DummyMssqlDatabase, SQL, type UserRow } from '../db/dummy-mssql.js';
+import type { User, UserInput } from '../types.js';
+
+const toUser = (row: UserRow): User => ({
+  id: row.Id,
+  name: row.Name,
+  email: row.Email,
+});
+
+/**
+ * Data access for users. Talks to a {@link DummyMssqlDatabase} using the same
+ * `request().input().query()` calls the real `mssql` driver exposes, so the
+ * only change needed to hit a real SQL Server is the injected database.
+ */
+export class UserRepository {
+  constructor(private readonly db: DummyMssqlDatabase) {}
+
+  async findAll(): Promise<User[]> {
+    const { recordset } = await this.db.request().query<UserRow>(SQL.selectAllUsers);
+    return recordset.map(toUser);
+  }
+
+  async findById(id: number): Promise<User | null> {
+    const { recordset } = await this.db
+      .request()
+      .input('id', id)
+      .query<UserRow>(SQL.selectUserById);
+    return recordset.length > 0 ? toUser(recordset[0]) : null;
+  }
+
+  async create(input: UserInput): Promise<User> {
+    const { recordset } = await this.db
+      .request()
+      .input('name', input.name)
+      .input('email', input.email)
+      .query<UserRow>(SQL.insertUser);
+    return toUser(recordset[0]);
+  }
+
+  async update(id: number, input: UserInput): Promise<User | null> {
+    const { recordset, rowsAffected } = await this.db
+      .request()
+      .input('id', id)
+      .input('name', input.name)
+      .input('email', input.email)
+      .query<UserRow>(SQL.updateUser);
+    return rowsAffected[0] > 0 ? toUser(recordset[0]) : null;
+  }
+
+  async remove(id: number): Promise<boolean> {
+    const { rowsAffected } = await this.db.request().input('id', id).query(SQL.deleteUser);
+    return rowsAffected[0] > 0;
+  }
+}
