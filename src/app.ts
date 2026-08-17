@@ -69,5 +69,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 
   app.register(userRoutes, { database });
 
+  // Close the pool as part of Fastify's own shutdown so `app.close()` (and the
+  // SIGINT/SIGTERM handlers that call it) release the database cleanly.
+  app.addHook('onClose', async () => {
+    await database.close();
+  });
+
   return app;
 }
