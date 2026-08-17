@@ -23,7 +23,7 @@ describe('DummyMssqlDatabase', () => {
       .input('name', null)
       .input('offset', 0)
       .input('limit', 2)
-      .query(SQL.listUsers);
+      .query(SQL.listUsers('Id', 'ASC'));
     expect(firstTwo.recordset).toHaveLength(2);
     expect(firstTwo.recordset[0].Id).toBe(1);
 
@@ -32,7 +32,7 @@ describe('DummyMssqlDatabase', () => {
       .input('name', null)
       .input('offset', 1)
       .input('limit', 10)
-      .query(SQL.listUsers);
+      .query(SQL.listUsers('Id', 'ASC'));
     expect(skipFirst.recordset[0].Id).toBe(2);
 
     const filtered = await db
@@ -40,9 +40,35 @@ describe('DummyMssqlDatabase', () => {
       .input('name', '%alan%')
       .input('offset', 0)
       .input('limit', 10)
-      .query(SQL.listUsers);
+      .query(SQL.listUsers('Id', 'ASC'));
     expect(filtered.recordset).toHaveLength(1);
     expect(filtered.recordset[0].Name).toBe('Alan Turing');
+  });
+
+  it('sorts users by a whitelisted column, ascending and descending', async () => {
+    const asc = await db
+      .request()
+      .input('name', null)
+      .input('offset', 0)
+      .input('limit', 10)
+      .query(SQL.listUsers('Name', 'ASC'));
+    expect(asc.recordset.map((u) => u.Name)).toEqual([
+      'Alan Turing',
+      'Grace Hopper',
+      'Katherine Johnson',
+    ]);
+
+    const desc = await db
+      .request()
+      .input('name', null)
+      .input('offset', 0)
+      .input('limit', 10)
+      .query(SQL.listUsers('Name', 'DESC'));
+    expect(desc.recordset.map((u) => u.Name)).toEqual([
+      'Katherine Johnson',
+      'Grace Hopper',
+      'Alan Turing',
+    ]);
   });
 
   it('counts users honouring the name filter, ignoring pagination', async () => {

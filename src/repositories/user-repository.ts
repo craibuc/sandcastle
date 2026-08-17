@@ -1,4 +1,11 @@
-import { DummyMssqlDatabase, MssqlRequestError, SQL, type UserRow } from '../db/dummy-mssql.js';
+import {
+  DummyMssqlDatabase,
+  MssqlRequestError,
+  SORTABLE_COLUMNS,
+  SQL,
+  type SortDirection,
+  type UserRow,
+} from '../db/dummy-mssql.js';
 import type { ListUsersOptions, User, UserInput, UserPatch } from '../types.js';
 
 const toUser = (row: UserRow): User => ({
@@ -42,12 +49,14 @@ export class UserRepository {
     const limit = options.limit ?? 20;
     const offset = options.offset ?? 0;
     const name = options.name ? `%${options.name}%` : null;
+    const column = SORTABLE_COLUMNS[options.sort ?? 'id'];
+    const direction: SortDirection = options.order === 'desc' ? 'DESC' : 'ASC';
     const { recordset } = await this.db
       .request()
       .input('name', name)
       .input('offset', offset)
       .input('limit', limit)
-      .query<UserRow>(SQL.listUsers);
+      .query<UserRow>(SQL.listUsers(column, direction));
     return recordset.map(toUser);
   }
 
