@@ -25,6 +25,17 @@ export const userInputSchema = {
   },
 } as const;
 
+export const userPatchSchema = {
+  $id: 'UserPatch',
+  type: 'object',
+  additionalProperties: false,
+  minProperties: 0,
+  properties: {
+    name: { type: 'string', minLength: 1, description: 'Full name' },
+    email: { type: 'string', format: 'email', description: 'Email address' },
+  },
+} as const;
+
 export const errorSchema = {
   $id: 'Error',
   type: 'object',
@@ -80,6 +91,18 @@ export const updateUserSchema = {
   summary: 'Replace a user',
   params: idParams,
   body: { $ref: 'UserInput#' },
+  response: {
+    200: userRef,
+    400: errorRef,
+    404: errorRef,
+  },
+} as const;
+
+export const patchUserSchema = {
+  tags: ['users'],
+  summary: 'Partially update a user',
+  params: idParams,
+  body: { $ref: 'UserPatch#' },
   response: {
     200: userRef,
     400: errorRef,

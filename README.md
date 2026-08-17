@@ -36,6 +36,7 @@ The server listens on `http://localhost:3000` (override with `PORT` / `HOST`).
 | GET    | `/users/:id`  | Get a user by id   |
 | POST   | `/users`      | Create a user      |
 | PUT    | `/users/:id`  | Replace a user     |
+| PATCH  | `/users/:id`  | Partially update a user |
 | DELETE | `/users/:id`  | Delete a user      |
 
 ## Scripts

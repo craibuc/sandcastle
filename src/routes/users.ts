@@ -1,12 +1,13 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { UserRepository } from '../repositories/user-repository.js';
 import type { DummyMssqlDatabase } from '../db/dummy-mssql.js';
-import type { UserInput } from '../types.js';
+import type { UserInput, UserPatch } from '../types.js';
 import {
   listUsersSchema,
   getUserSchema,
   createUserSchema,
   updateUserSchema,
+  patchUserSchema,
   deleteUserSchema,
 } from './user-schemas.js';
 
@@ -47,6 +48,17 @@ export const userRoutes: FastifyPluginAsync<UserRoutesOptions> = async (fastify,
     async (request, reply) => {
       const { id } = request.params;
       const user = await repo.update(id, request.body);
+      if (!user) return notFound(reply, `User ${id} not found`);
+      return user;
+    },
+  );
+
+  fastify.patch<{ Params: IdParams; Body: UserPatch }>(
+    '/users/:id',
+    { schema: patchUserSchema },
+    async (request, reply) => {
+      const { id } = request.params;
+      const user = await repo.patch(id, request.body);
       if (!user) return notFound(reply, `User ${id} not found`);
       return user;
     },

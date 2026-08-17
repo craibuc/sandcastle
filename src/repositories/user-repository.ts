@@ -1,5 +1,5 @@
 import { DummyMssqlDatabase, SQL, type UserRow } from '../db/dummy-mssql.js';
-import type { User, UserInput } from '../types.js';
+import type { User, UserInput, UserPatch } from '../types.js';
 
 const toUser = (row: UserRow): User => ({
   id: row.Id,
@@ -45,6 +45,20 @@ export class UserRepository {
       .input('email', input.email)
       .query<UserRow>(SQL.updateUser);
     return rowsAffected[0] > 0 ? toUser(recordset[0]) : null;
+  }
+
+  /**
+   * Applies a partial update: reads the current row, merges the provided
+   * fields over it, then reuses {@link update}. Returns `null` if no user
+   * with `id` exists.
+   */
+  async patch(id: number, changes: UserPatch): Promise<User | null> {
+    const existing = await this.findById(id);
+    if (!existing) return null;
+    return this.update(id, {
+      name: changes.name ?? existing.name,
+      email: changes.email ?? existing.email,
+    });
   }
 
   async remove(id: number): Promise<boolean> {
