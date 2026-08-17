@@ -59,6 +59,14 @@ The response carries an **`X-Total-Count`** header with the total number of
 users matching the filter, independent of the pagination window — so clients
 can render "showing 1–20 of _N_" without an extra request.
 
+It also returns an **RFC 5988 `Link`** header with `first`/`prev`/`next`/`last`
+URLs (`prev`/`next` present only when such a page exists), preserving the active
+`name`/`sort`/`order` filters so clients can walk pages without rebuilding URLs:
+
+```
+Link: </users?limit=2&offset=0>; rel="first", </users?limit=2&offset=2>; rel="next", </users?limit=2&offset=2>; rel="last"
+```
+
 ```bash
 curl -i 'http://localhost:3000/users?limit=2&offset=1'   # X-Total-Count: 3
 curl 'http://localhost:3000/users?name=alan'

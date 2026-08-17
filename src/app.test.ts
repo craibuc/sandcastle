@@ -42,6 +42,22 @@ describe('User REST API', () => {
     expect(res.headers['x-total-count']).toBe('3');
   });
 
+  it('GET /users sets an RFC-5988 Link header with next/last but no prev on the first page', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?limit=2&offset=0' });
+    expect(res.statusCode).toBe(200);
+    const link = res.headers.link as string;
+    expect(link).toContain('rel="first"');
+    expect(link).toContain('offset=2>; rel="next"');
+    expect(link).toContain('rel="last"');
+    expect(link).not.toContain('rel="prev"');
+  });
+
+  it('GET /users Link header preserves the name filter across pages', async () => {
+    const res = await app.inject({ method: 'GET', url: '/users?limit=1&offset=0&name=a' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers.link as string).toContain('name=a');
+  });
+
   it('GET /users?name= reflects the filtered count in X-Total-Count', async () => {
     const res = await app.inject({ method: 'GET', url: '/users?name=alan' });
     expect(res.statusCode).toBe(200);
