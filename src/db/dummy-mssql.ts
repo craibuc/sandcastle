@@ -86,12 +86,8 @@ export class DummyRequest {
    * (e.g. a unique-constraint violation) surface as a rejected promise, just
    * as the real `mssql` driver reports them.
    */
-  query<T = UserRow>(sql: string): Promise<QueryResult<T>> {
-    try {
-      return Promise.resolve(this.db.execute<T>(normalise(sql), this.params));
-    } catch (err) {
-      return Promise.reject(err);
-    }
+  async query<T = UserRow>(sql: string): Promise<QueryResult<T>> {
+    return this.db.execute<T>(normalise(sql), this.params);
   }
 }
 
