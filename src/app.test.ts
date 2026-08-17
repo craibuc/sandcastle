@@ -260,6 +260,15 @@ describe('User REST API', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('closes the backing database when the app is closed', async () => {
+    const db = new DummyMssqlDatabase();
+    const instance = buildApp({ database: db });
+    await instance.ready();
+    expect(db.connected).toBe(true);
+    await instance.close();
+    expect(db.connected).toBe(false);
+  });
+
   it('exposes an OpenAPI/Swagger document at /docs/json', async () => {
     const res = await app.inject({ method: 'GET', url: '/docs/json' });
     expect(res.statusCode).toBe(200);

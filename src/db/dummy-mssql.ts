@@ -139,13 +139,41 @@ export class DummyRequest {
 export class DummyMssqlDatabase {
   private users: UserRow[];
   private nextId: number;
+  private open = true;
 
   constructor(seed: UserRow[] = SEED_USERS) {
     this.users = seed.map((u) => ({ ...u }));
     this.nextId = this.users.reduce((max, u) => Math.max(max, u.Id), 0) + 1;
   }
 
+  /** Whether the pool is open for requests, mirroring `ConnectionPool.connected`. */
+  get connected(): boolean {
+    return this.open;
+  }
+
+  /**
+   * Opens the pool, mirroring `mssql`'s `ConnectionPool.connect()` (which
+   * resolves to the pool itself). The dummy has nothing to dial, so this just
+   * marks the pool open; a real pool would establish its TCP connections here.
+   */
+  async connect(): Promise<this> {
+    this.open = true;
+    return this;
+  }
+
+  /**
+   * Closes the pool, mirroring `ConnectionPool.close()`. Once closed, further
+   * {@link request} calls throw, letting graceful shutdown stop serving new
+   * queries. Calling {@link connect} again reopens it.
+   */
+  async close(): Promise<void> {
+    this.open = false;
+  }
+
   request(): DummyRequest {
+    if (!this.open) {
+      throw new Error('Connection is closed.');
+    }
     return new DummyRequest(this);
   }
 

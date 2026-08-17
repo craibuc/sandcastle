@@ -175,4 +175,26 @@ describe('DummyMssqlDatabase', () => {
       .query(SQL.updateUser);
     expect(rowsAffected[0]).toBe(1);
   });
+
+  it('exposes an mssql-style connect() lifecycle that resolves to the pool', async () => {
+    const returned = await db.connect();
+    expect(returned).toBe(db);
+    expect(db.connected).toBe(true);
+  });
+
+  it('refuses to serve requests once the pool is closed', async () => {
+    await db.connect();
+    await db.close();
+    expect(db.connected).toBe(false);
+    expect(() => db.request()).toThrow(/closed/i);
+  });
+
+  it('can be reopened by connecting again after close', async () => {
+    await db.connect();
+    await db.close();
+    await db.connect();
+    expect(db.connected).toBe(true);
+    const { recordset } = await db.request().query(SQL.selectAllUsers);
+    expect(recordset.length).toBeGreaterThan(0);
+  });
 });

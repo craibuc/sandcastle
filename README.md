@@ -66,6 +66,16 @@ with `{ "status": "ok", "database": "up" }` when the query succeeds, or `503`
 with `{ "status": "error", "database": "down" }` when the database is
 unreachable — suitable as a container/orchestrator readiness check.
 
+### Pool lifecycle & graceful shutdown
+
+The database exposes an `mssql`-shaped pool lifecycle: `connect()` opens the
+pool (resolving to the pool itself) and `close()` releases it — after which
+`request()` throws, so no further queries are served. `server.ts` calls
+`connect()` before it starts listening, and wires `SIGINT`/`SIGTERM` to a
+graceful shutdown that calls `app.close()`. Fastify's `onClose` hook closes the
+pool as part of that shutdown, so an orderly stop exits `0` and a failed close
+exits `1`.
+
 ### Listing, pagination & filtering
 
 `GET /users` accepts optional query parameters (validated via JSON schema and
@@ -132,6 +142,7 @@ src/
   repositories/              # data access using the dummy db
   routes/                    # Fastify route plugins + JSON schemas
   app.ts                     # buildApp(): wires swagger + routes
+  shutdown.ts                # SIGINT/SIGTERM → graceful app.close()
   server.ts                  # entrypoint
 ```
 
