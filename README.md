@@ -27,6 +27,26 @@ The server listens on `http://localhost:3000` (override with `PORT` / `HOST`).
 - Swagger UI: `http://localhost:3000/docs`
 - OpenAPI JSON: `http://localhost:3000/docs/json`
 
+### Database configuration
+
+Connection settings are resolved from the environment by `loadDbConfig()` into
+an `mssql`-shaped config object, so swapping the dummy database for a real
+`ConnectionPool` is `new sql.ConnectionPool(loadDbConfig())` with no call-site
+changes. Bad values (e.g. an out-of-range port or negative pool size) throw at
+startup rather than failing later as an opaque connection error.
+
+| Variable                      | Default     | Notes                                   |
+| ----------------------------- | ----------- | --------------------------------------- |
+| `DB_SERVER`                   | `localhost` | SQL Server host                         |
+| `DB_PORT`                     | `1433`      | TCP port (1–65535)                      |
+| `DB_USER` / `DB_PASSWORD`     | —           | SQL auth credentials                    |
+| `DB_NAME`                     | `master`    | Database name                           |
+| `DB_ENCRYPT`                  | `true`      | TLS encryption (`false` to disable)     |
+| `DB_TRUST_SERVER_CERTIFICATE` | `false`     | Trust a self-signed server cert         |
+| `DB_POOL_MAX`                 | `10`        | Max pooled connections                  |
+| `DB_POOL_MIN`                 | `0`         | Min pooled connections                  |
+| `DB_POOL_IDLE_TIMEOUT_MS`     | `30000`     | Idle connection eviction (ms)           |
+
 ## Endpoints
 
 | Method | Path          | Description        |
