@@ -17,6 +17,11 @@ describe('DummyMssqlDatabase', () => {
     expect(result.recordset[0]).toHaveProperty('Email');
   });
 
+  it('answers a lightweight connectivity ping with a single row', async () => {
+    const { recordset } = await db.request().query<{ Ok: number }>(SQL.ping);
+    expect(recordset).toEqual([{ Ok: 1 }]);
+  });
+
   it('lists users with pagination (offset/limit) and name filter', async () => {
     const firstTwo = await db
       .request()

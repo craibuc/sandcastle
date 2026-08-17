@@ -31,13 +31,20 @@ The server listens on `http://localhost:3000` (override with `PORT` / `HOST`).
 
 | Method | Path          | Description        |
 | ------ | ------------- | ------------------ |
-| GET    | `/health`     | Health check       |
+| GET    | `/health`     | Liveness/readiness probe (checks DB connectivity) |
 | GET    | `/users`      | List users (paginated, filterable) |
 | GET    | `/users/:id`  | Get a user by id   |
 | POST   | `/users`      | Create a user      |
 | PUT    | `/users/:id`  | Replace a user     |
 | PATCH  | `/users/:id`  | Partially update a user |
 | DELETE | `/users/:id`  | Delete a user      |
+
+### Health probe
+
+`GET /health` runs a trivial `SELECT 1` against the database. It returns `200`
+with `{ "status": "ok", "database": "up" }` when the query succeeds, or `503`
+with `{ "status": "error", "database": "down" }` when the database is
+unreachable — suitable as a container/orchestrator readiness check.
 
 ### Listing, pagination & filtering
 

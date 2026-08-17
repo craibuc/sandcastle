@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import { DummyMssqlDatabase } from './db/dummy-mssql.js';
+import { DummyMssqlDatabase, SQL } from './db/dummy-mssql.js';
 import { userRoutes } from './routes/users.js';
 import { userSchema, userInputSchema, userPatchSchema, errorSchema } from './routes/user-schemas.js';
 
@@ -39,9 +39,33 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 
   app.register(swaggerUi, { routePrefix: '/docs' });
 
-  app.get('/health', { schema: { tags: ['health'], summary: 'Health check' } }, async () => ({
-    status: 'ok',
-  }));
+  const healthResponse = {
+    type: 'object',
+    properties: {
+      status: { type: 'string', description: '`ok` when the API and database are healthy.' },
+      database: { type: 'string', description: 'Connectivity of the backing database (`up`/`down`).' },
+    },
+  } as const;
+
+  app.get(
+    '/health',
+    {
+      schema: {
+        tags: ['health'],
+        summary: 'Health check',
+        description: 'Liveness/readiness probe: verifies the API is up and the database is reachable.',
+        response: { 200: healthResponse, 503: healthResponse },
+      },
+    },
+    async (_request, reply) => {
+      try {
+        await database.request().query(SQL.ping);
+        return { status: 'ok', database: 'up' };
+      } catch {
+        return reply.code(503).send({ status: 'error', database: 'down' });
+      }
+    },
+  );
 
   app.register(userRoutes, { database });
 

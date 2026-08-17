@@ -51,6 +51,8 @@ export type SortDirection = 'ASC' | 'DESC';
 
 /** Whitelisted SQL statements understood by the dummy database. */
 export const SQL = {
+  /** Trivial round-trip used to verify database connectivity (a readiness probe). */
+  ping: 'SELECT 1 AS Ok',
   selectAllUsers: 'SELECT Id, Name, Email FROM Users ORDER BY Id',
   /**
    * Paginated, name-filtered list. `column`/`direction` are interpolated from
@@ -182,6 +184,9 @@ export class DummyMssqlDatabase {
     }
 
     switch (sql) {
+      case normalise(SQL.ping):
+        return this.wrap([{ Ok: 1 }], 1);
+
       case normalise(SQL.selectAllUsers):
         return this.wrap(this.users.map((u) => ({ ...u })));
 
